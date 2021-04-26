@@ -30,7 +30,7 @@ const CURRENT_VERSION = "0.1.0",
 //some global variables
 var customLocalStorage = {
     getContent: function() {
-        if(!localStorage.hasOwnProperty('spotify_util') || !JSON.parse(localStorage.getItem('spotify_util')).hasOwnProperty("spotifyparallel")) localStorage.setItem('spotify_util', JSON.stringify({ ...JSON.parse(localStorage.getItem('spotify_util')), recentsongcollector:{} }));
+        if(!localStorage.hasOwnProperty('spotify_util') || !JSON.parse(localStorage.getItem('spotify_util')).hasOwnProperty("recentsongcollector")) localStorage.setItem('spotify_util', JSON.stringify({ ...JSON.parse(localStorage.getItem('spotify_util')), recentsongcollector:{} }));
         return JSON.parse(localStorage.getItem("spotify_util"))["recentsongcollector"] || {};
     },
     set: function(key, val) {
