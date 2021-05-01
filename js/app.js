@@ -1,4 +1,5 @@
 import { credentials } from "./credentials.js";
+import { CustomLocalStorage } from "../../spotify-util/js/customLocalStorage.js";
 
 const CURRENT_VERSION = "0.1.0",
     REFRESH_RATE = { //used to control API rate limiting
@@ -28,24 +29,8 @@ const CURRENT_VERSION = "0.1.0",
     };
 
 //some global variables
-var customLocalStorage = {
-    getContent: function() {
-        if(!localStorage.hasOwnProperty('spotify_util') || !JSON.parse(localStorage.getItem('spotify_util')).hasOwnProperty("recentsongcollector")) localStorage.setItem('spotify_util', JSON.stringify({ ...JSON.parse(localStorage.getItem('spotify_util')), recentsongcollector:{} }));
-        return JSON.parse(localStorage.getItem("spotify_util"))["recentsongcollector"] || {};
-    },
-    set: function(key, val) {
-        //val can be a js obj, we'll convert it all in here
-        let new_storage_obj = { 
-            ...JSON.parse(localStorage.getItem("spotify_util")),    //import all of spotiy_util because we are going to update all of spotify_util (want to make sure we dont lose the other keys)
-            recentsongcollector: { //override the recentsongcollector key specifically
-                ...this.content,    //carry over everything from recentsongcollector
-                [key]:val           //then overwrite the given key with the given value
-            } 
-        };
-        localStorage.setItem("spotify_util", JSON.stringify(new_storage_obj));  //stringify and set the new obj
-    }
-};
-var user_credentials = null;
+var customLocalStorage = new CustomLocalStorage('recentsongcollector');
+var spotify_credentials = null;
 var CURRENTLY_RUNNING = false;
 var playlist_title = "Recently Discovered Songs";
 var playlist_objects = [];
@@ -55,12 +40,12 @@ var global_playlist_tracks = [];
 
 
 function callSpotify(url, data) {
-    if(!user_credentials) return new Promise((resolve, reject) => reject("no user_credentials"));
+    if(!spotify_credentials) return new Promise((resolve, reject) => reject("no spotify_credentials"));
     return $.ajax(url, {
         dataType: 'json',
         data: data,
         headers: {
-            'Authorization': 'Bearer ' + user_credentials.token
+            'Authorization': 'Bearer ' + spotify_credentials.token
         }
     });
 }
@@ -71,7 +56,7 @@ function postSpotify(url, json, callback) {
         data: JSON.stringify(json),
         dataType: 'json',
         headers: {
-            'Authorization': 'Bearer ' + user_credentials.token,
+            'Authorization': 'Bearer ' + spotify_credentials.token,
             'Content-Type': 'application/json'
         },
         success: function (r) {
@@ -96,7 +81,7 @@ function deleteSpotify(url, callback) {
         //data: JSON.stringify(json),
         dataType: 'json',
         headers: {
-            'Authorization': 'Bearer ' + user_credentials.token,
+            'Authorization': 'Bearer ' + spotify_credentials.token,
             'Content-Type': 'application/json'
         },
         success: function (r) {
@@ -161,7 +146,7 @@ function loginWithSpotify() {
         '&redirect_uri=' + encodeURIComponent(credentials.spotify.redirect_uri);
 
     //redirect the page to spotify's login page. after login user comes back to our page with a token in
-    //page hash, or, if they're already logged in, a token in customLocalStorage's user_credentials
+    //page hash, or, if they're already logged in, a token in customLocalStorage's spotify_credentials
     document.location = url;
 }
 
@@ -267,12 +252,10 @@ function progressBarHandler({current_operation, total_operations, stage = 1, ...
 }
 
 async function performAuthDance() {
+    spotify_credentials = customLocalStorage.getItem('spotify_credentials');
+    
     // if we already have a token and it hasn't expired, use it,
-    if ('user_credentials' in customLocalStorage.getContent()) {
-        user_credentials = customLocalStorage.getContent().user_credentials;
-    }
-
-    if (user_credentials && user_credentials.expires > getTime()) {
+    if (spotify_credentials?.expires > getTime()) {
         console.log("found unexpired token!");
         location.hash = ''; //clear the hash just in case (this can be removed later)
         //load our app
@@ -303,15 +286,15 @@ async function performAuthDance() {
                 expiresAt = expires + getTime();
             }
 
-            user_credentials = {
+            spotify_credentials = {
                 token: g_access_token,
                 expires: expiresAt
             }
 
             callSpotify('https://api.spotify.com/v1/me').then(
                 function (user) {
-                    user_credentials.uid = user.id;
-                    customLocalStorage.set("user_credentials", user_credentials);
+                    spotify_credentials.uid = user.id;
+                    customLocalStorage.setItem("spotify_credentials", spotify_credentials);
                     location.hash = '';
                     //load app
                     $("#login-page").addClass("hidden");
@@ -359,7 +342,7 @@ function checkPlaylist(playlist_obj = {}) {
     //if user says no privates and playlist is not public (private)
     if(!USER_OPTIONS.include_private && !playlist_obj.public) return false;
     if(!USER_OPTIONS.include_collaborative && playlist_obj.collaborative) return false;
-    if(!USER_OPTIONS.include_followed && playlist_obj.owner.id != user_credentials.uid) return false;
+    if(!USER_OPTIONS.include_followed && playlist_obj.owner.id != spotify_credentials.uid) return false;
     return true;    //passed all tests
 }
 
@@ -491,7 +474,7 @@ function filterTracks(track_array = global_playlist_tracks) {
 function createPlaylist(params = { name: "New Playlist" }) {
     //create a playlist with the given params, and return the created playlist
     return new Promise((resolve, reject) => {
-        var url = "https://api.spotify.com/v1/users/" + user_credentials.uid + "/playlists";
+        var url = "https://api.spotify.com/v1/users/" + spotify_credentials.uid + "/playlists";
         postSpotify(url, params, function (ok, playlist) {
             if (ok) resolve(playlist);
             else {
@@ -629,7 +612,7 @@ async function main() {
             sessionTimestamp:new Date().getTime(),
             sessionID:new_session.key,
             //sessionStatus:"pending",
-            spotifyUID:user_credentials.uid,
+            spotifyUID:spotify_credentials.uid,
             userAgent: navigator.userAgent
         }, function (error) {
             if(error) console.log("Firebase error", error);
